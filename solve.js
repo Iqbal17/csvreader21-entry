@@ -120,7 +120,7 @@ export function run(input) {
     const open = pos;
     const openLine = line;
     pos += 1;
-    const parts = [];
+    let value = '';
     while (pos < n) {
       const q = text.indexOf('"', pos);
       if (q === -1) {
@@ -134,21 +134,20 @@ export function run(input) {
       if (q > pos) {
         const seg = text.slice(pos, q);
         if (seg.indexOf('\n') === -1 && seg.indexOf('\r') === -1) {
-          parts.push(seg);
+          value += seg;
         } else {
           line += countBreaks(seg);
-          parts.push(seg.replace(/\r\n?/g, '\n'));
+          value += seg.replace(/\r\n?/g, '\n');
         }
       }
       if (text.charCodeAt(q + 1) === 34) {
         // A doubled quote is one quote inside the field.
-        parts.push('"');
+        value += '"';
         pos = q + 2;
         continue;
       }
       // The closing quote.
       pos = q + 1;
-      const value = parts.join('');
       if (pos >= n) return { value, ended: END };
       const c = text.charCodeAt(pos);
       if (c === 44) {
@@ -223,17 +222,25 @@ export function run(input) {
     const q = text.indexOf('"', pos);
     if (q === -1 || q >= lineEnd) {
       const crlf = lineEnd < n && lineEnd > pos && text.charCodeAt(lineEnd - 1) === 13;
-      const content = text.slice(pos, crlf ? lineEnd - 1 : lineEnd);
-      let fields;
-      if (content.indexOf('\r') === -1) {
-        fields = content.split(',');
-      } else {
-        // Lone CRs inside the line: each is dropped with a stray_cr error.
-        fields = content.split(',');
+      const end = crlf ? lineEnd - 1 : lineEnd;
+      const fields = [];
+      let fStart = pos;
+      while (true) {
+        const cm = text.indexOf(',', fStart);
+        if (cm === -1 || cm >= end) {
+          fields.push(text.slice(fStart, end));
+          break;
+        }
+        fields.push(text.slice(fStart, cm));
+        fStart = cm + 1;
+      }
+      // A lone CR inside the line (other than the CRLF terminator, already
+      // excluded by `end`): each is dropped with a stray_cr error.
+      const crAt = text.indexOf('\r', pos);
+      if (crAt !== -1 && crAt < end) {
         for (let i = 0; i < fields.length; i++) {
           const f = fields[i];
-          const at = f.indexOf('\r');
-          if (at !== -1) {
+          if (f.indexOf('\r') !== -1) {
             const parts = f.split('\r');
             for (let k = 1; k < parts.length; k++) error('stray_cr');
             fields[i] = parts.join('');
